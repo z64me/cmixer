@@ -77,6 +77,29 @@ static void dummy_handler(cm_Event *e) {
 }
 
 
+static const void *memstr(const void *hay, int hayLen, const char *needle)
+{
+	const unsigned char *b;
+	int needleLen;
+	int i;
+	
+	if (!hay || !needle || hayLen <= 0)
+		return 0;
+	
+	needleLen = strlen(needle);
+	if (!needleLen)
+		return 0;
+	
+	b = hay;
+	hayLen -= needleLen;
+	for (i = 0; i < hayLen; ++i, ++b)
+		if (!memcmp(b, needle, needleLen))
+			return b;
+	
+	return 0;
+}
+
+
 static void lock(void) {
   cm_Event e;
   e.type = CM_EVENT_LOCK;
@@ -661,6 +684,7 @@ static const char* wav_init(cm_SourceInfo *info, void *data, int len, int ownsda
 typedef struct {
   stb_vorbis *ogg;
   void *data;
+  unsigned long loopStart;
 } OggStream;
 
 
@@ -687,6 +711,7 @@ fill:
       ** before filling it */
       if (len != n) {
         stb_vorbis_seek_start(s->ogg);
+        stb_vorbis_seek(s->ogg, s->loopStart);
         buf += n;
         len -= n;
         goto fill;
@@ -705,6 +730,8 @@ static const char* ogg_init(cm_SourceInfo *info, void *data, int len, int ownsda
   stb_vorbis *ogg;
   stb_vorbis_info ogginfo;
   int err;
+  const char *loopStartTag;
+  const char *loopStartText = "LOOPSTART=";
 
   ogg = stb_vorbis_open_memory(data, len, &err, NULL);
   if (!ogg) {
@@ -716,6 +743,9 @@ static const char* ogg_init(cm_SourceInfo *info, void *data, int len, int ownsda
     stb_vorbis_close(ogg);
     return error("allocation failed");
   }
+  
+  if ((loopStartTag = memstr(data, len, loopStartText)))
+    stream->loopStart = atoi(loopStartTag + strlen(loopStartText));
 
   stream->ogg = ogg;
   if (ownsdata) {
